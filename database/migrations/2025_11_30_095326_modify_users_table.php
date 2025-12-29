@@ -6,43 +6,31 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-
-    public function up(): void
+     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
+
             $table->string('first_name');
             $table->string('last_name');
-
-
             $table->string('phone_number')->unique();
-
-
             $table->string('password');
-
 
             $table->enum('user_role', ['tenant', 'owner', 'admin'])->default('tenant');
 
-            $table->string('avatar')->nullable();
+// داخل دالة up()
+            $table->enum('status', ['active', 'pending', 'rejected', 'banned'])->default('pending');
+            $table->string('profile_image')->nullable(); // بدل avatar
+            $table->string('id_image')->nullable();      // بدل identity_image
 
-            $table->date('birth_date');
+            $table->date('birth_date')->nullable();
 
-
-            $table->string('identity_image')->nullable();
-
-
-            $table->boolean('is_approved')->default(false);
-            $table->string('status')->default('pending');
-
+            $table->rememberToken();
             $table->timestamps();
         });
-
     }
 
-    /**
-     * Reverse the migrations.
-     */
-    public function down(): void
+      public function down(): void
     {
         Schema::dropIfExists('users');
     }

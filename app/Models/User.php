@@ -18,10 +18,10 @@ class User extends Authenticatable
         'phone_number',
         'user_role',
         'birth_date',
-        'avatar',
-        'identity_image',
+        'id_image',
+        'profile_image',
         'password',
-        'is_approved',
+
         'status',
     ];
 
@@ -34,7 +34,6 @@ class User extends Authenticatable
 
     protected $casts = [
         'birth_date' => 'date',
-        'is_approved' => 'boolean',
     ];
 
     public function apartments()
@@ -45,5 +44,9 @@ class User extends Authenticatable
     public function favorites()
     {
         return $this->hasMany(Favorite::class);
+    }
+    public function bookings()
+    {
+        return $this->hasMany(Booking::class);
     }
 }

@@ -18,7 +18,6 @@ class RoleMiddleware
      */
     public function handle(Request $request, Closure $next, string $role): Response
     {
-        // 1. التحقق من المصادقة (هل تم تسجيل الدخول)
         if (!Auth::check()) {
             return response()->json([
                 'success' => false,
@@ -28,16 +27,13 @@ class RoleMiddleware
 
         $user = Auth::user();
 
-        // 2. التحقق من الدور (هل دور المستخدم هو الدور المطلوب)
         if ($user->user_role !== $role) {
-            // 403 Forbidden (ممنوع) هو الرد القياسي لرفض الصلاحيات
             return response()->json([
                 'success' => false,
                 'message' => 'Access denied. You do not have the required role.'
             ], 403);
         }
 
-        // إذا كان كل شيء على ما يرام، استمر في تنفيذ الطلب
         return $next($request);
     }
 }
