@@ -49,7 +49,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // باقي العمليات
     Route::post('/apartments', [ApartmentController::class, 'store']);
-    Route::post('/apartments/{id}', [ApartmentController::class, 'update']);
+    // قم بتغيير Route::post إلى Route::match ليقبل الحالتين
+    Route::match(['put', 'post'], '/apartments/{id}', [ApartmentController::class, 'update']);
     Route::delete('/apartments/{id}', [ApartmentController::class, 'destroy']);
 
     // --- حجوزات المستأجر (Tenant) ---
@@ -104,7 +105,7 @@ Route::middleware(['auth:sanctum', RoleMiddleware::class . ':admin'])->prefix('a
     Route::get('all-users', [AdminController::class, 'getAllUsers']);         // كل المستخدمين
     Route::get('all-apartments', [AdminController::class, 'getAllApartments']); // كل الشقق
     Route::get('all-bookings', [AdminController::class, 'getAllBookings']);     // كل الحجوزات
-
+    Route::get('/admin/all-bookings', [AdminController::class, 'getAllBookings']);
     // 2. إجراءات إضافية
     Route::post('users/{id}/activate', [AdminController::class, 'activateUser']); // إلغاء الحظر (Unban)
     Route::delete('apartments/{id}', [AdminController::class, 'forceDeleteApartment']); // حذف عقار نهائياً (Force Delete)

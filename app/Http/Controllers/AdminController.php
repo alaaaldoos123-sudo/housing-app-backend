@@ -5,10 +5,11 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Apartment;
-use App\Models\Booking; // ✅ ضروري لحساب الإحصائيات
-use App\Models\Notification; // ✅ تمت إضافة موديل الإشعارات
+use App\Models\Booking;
+use App\Models\Notification;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use App\Http\Resources\ApartmentResource; // تأكد من وجود هذا السطر
 
 class AdminController extends Controller
 {
@@ -21,6 +22,7 @@ class AdminController extends Controller
     {
         $pendingUsers = User::where('user_role', '!=', 'admin')
             ->where('status', 'pending')
+            ->latest()
             ->get([
                 'id',
                 'phone_number',
@@ -38,235 +40,55 @@ class AdminController extends Controller
         ]);
     }
 
-    // عرض تفاصيل مستخدم معين
-    public function showUser($userId)
-    {
-        try {
-            $user = User::findOrFail($userId);
-
-            return response()->json([
-                'success' => true,
-                'user' => $user
-            ]);
-
-        } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'User not found.'
-            ], 404);
-        }
-    }
-
-    // الموافقة على مستخدم جديد
+    // الموافقة على مستخدم
     public function approveUser($userId)
     {
         try {
             $user = User::findOrFail($userId);
-
             $user->status = 'active';
             $user->save();
 
-            return response()->json([
-                'success' => true,
-                'message' => "User approved successfully and is now active."
-            ]);
-
+            return response()->json(['success' => true, 'message' => "User approved successfully."]);
         } catch (ModelNotFoundException $e) {
             return response()->json(['success' => false, 'message' => 'User not found.'], 404);
-        } catch (\Exception $e) {
-            Log::error("Approval failed: " . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Server error.'], 500);
         }
     }
 
-    // رفض طلب تسجيل مستخدم جديد
+    // رفض مستخدم
     public function rejectUser($userId)
     {
         try {
             $user = User::findOrFail($userId);
-
             $user->status = 'rejected';
             $user->save();
 
-            return response()->json([
-                'success' => true,
-                'message' => "User registration rejected."
-            ]);
-
+            return response()->json(['success' => true, 'message' => "User rejected."]);
         } catch (ModelNotFoundException $e) {
             return response()->json(['success' => false, 'message' => 'User not found.'], 404);
         }
     }
 
-    // حظر مستخدم فعال (Ban)
+    // حظر مستخدم وطرد التوكنات
     public function banUser($userId)
     {
-
         try {
             $user = User::findOrFail($userId);
-
             $user->status = 'banned';
             $user->save();
+            $user->tokens()->delete(); // طرد المستخدم فوراً
 
-            // حذف التوكنات لطرده من التطبيق فوراً
-            $user->tokens()->delete();
-
-            return response()->json([
-                'success' => true,
-                'message' => "User has been banned and logged out."
-            ]);
-
+            return response()->json(['success' => true, 'message' => "User banned and logged out."]);
         } catch (ModelNotFoundException $e) {
             return response()->json(['success' => false, 'message' => 'User not found.'], 404);
         }
     }
 
-    // التحقق من حالة المستخدم
-    public function checkStatus($userId)
-    {
-        try {
-            $user = User::findOrFail($userId);
-            return response()->json([
-                'success' => true,
-                'status' => $user->status,
-            ]);
-        } catch (ModelNotFoundException $e) {
-            return response()->json(['success' => false, 'message' => 'User not found'], 404);
-        }
-    }
-
-
-    // =========================================================
-    // 2️⃣ قسم إدارة الشقق (Apartments Management)
-    // =========================================================
-
-    // جلب الشقق التي بانتظار الموافقة
-    public function pendingApartments()
-    {
-        $apartments = Apartment::with('owner')
-            ->where('status', 'pending')
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Pending apartments fetched successfully.',
-            'apartments' => $apartments
-        ]);
-    }
-
-    // الموافقة على شقة ونشرها (مع إشعار)
-    public function approveApartment($apartmentId)
-    {
-        try {
-            $apartment = Apartment::findOrFail($apartmentId);
-
-            $apartment->status = 'active';
-            $apartment->is_published = true;
-            $apartment->save();
-
-            // ✅ إرسال إشعار للمالك
-            try {
-                Notification::create([
-                    'user_id' => $apartment->owner_id,
-                    'title'   => 'تمت الموافقة على عقارك! 🎉',
-                    'body'    => "مبروك! تمت الموافقة على نشر عقارك '{$apartment->name}' وهو الآن متاح للمستأجرين.",
-                    'type'    => 'apartment_approved',
-                    'is_read' => false
-                ]);
-            } catch (\Exception $e) {
-                Log::error("Failed to create notification for apartment approval: " . $e->getMessage());
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => "Apartment approved, published, and owner notified."
-            ]);
-
-        } catch (ModelNotFoundException $e) {
-            return response()->json(['success' => false, 'message' => 'Apartment not found.'], 404);
-        }
-    }
-
-    // رفض شقة (مع إشعار)
-    public function rejectApartment($apartmentId)
-    {
-        try {
-            $apartment = Apartment::findOrFail($apartmentId);
-
-            $apartment->status = 'rejected';
-            $apartment->is_published = false;
-            $apartment->save();
-
-            // ✅ إرسال إشعار للمالك
-            try {
-                Notification::create([
-                    'user_id' => $apartment->owner_id,
-                    'title'   => 'تم رفض عقارك ❌',
-                    'body'    => "نأسف لإبلاغك بأنه تم رفض نشر عقارك '{$apartment->name}'. يرجى مراجعة الشروط وتعديل البيانات.",
-                    'type'    => 'apartment_rejected',
-                    'is_read' => false
-                ]);
-            } catch (\Exception $e) {
-                Log::error("Failed to create notification for apartment rejection: " . $e->getMessage());
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => "Apartment rejected and owner notified."
-            ]);
-
-        } catch (ModelNotFoundException $e) {
-            return response()->json(['success' => false, 'message' => 'Apartment not found.'], 404);
-        }
-    }
-
-    // =========================================================
-    // 3️⃣ الإحصائيات العامة (Dashboard Stats)
-    // =========================================================
-
-    public function getDashboardStats()
-    {
-        try {
-            // 1. عدد المستخدمين الجدد (خلال هذا الشهر)
-            $newUsers = User::where('user_role', '!=', 'admin')
-                ->whereMonth('created_at', now()->month)
-                ->whereYear('created_at', now()->year)
-                ->count();
-
-            // 2. عدد الشقق التي تنتظر الموافقة
-            $pendingApartments = Apartment::where('status', 'pending')->count();
-
-            // 3. إجمالي الحجوزات
-            $totalBookings = Booking::count();
-
-            // 4. الدخل الكلي (مجموع أسعار الحجوزات المقبولة)
-            $totalRevenue = Booking::where('status', 'accepted')->sum('total_price');
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'new_users' => $newUsers,
-                    'pending_apartments' => $pendingApartments,
-                    'total_bookings' => $totalBookings,
-                    'total_revenue' => $totalRevenue
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    // =========================================================
-    // 4️⃣ إدارة شاملة (للعرض والبحث في كل البيانات) - 🔥 القسم الجديد المضاف
-    // =========================================================
-
-    // جلب جميع المستخدمين (مالكين ومستأجرين) مع البحث والفلترة
+    // جلب جميع المستخدمين (للبحث والفلترة الشاملة)
     public function getAllUsers(Request $request)
     {
-        $query = User::where('user_role', '!=', 'admin'); // استثناء الأدمن
+        $query = User::where('user_role', '!=', 'admin');
 
-        // بحث بالاسم أو الهاتف
+        // البحث بالاسم أو الهاتف
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
@@ -276,49 +98,182 @@ class AdminController extends Controller
             });
         }
 
-        // فلترة حسب الدور (مالك أو مستأجر)
-        if ($request->filled('role') && $request->role !== 'all') {
-            $query->where('user_role', $request->role);
-        }
-
-        // فلترة حسب الحالة (active, banned, pending)
+        // فلترة بالحالة
         if ($request->filled('status') && $request->status !== 'all') {
             $query->where('status', $request->status);
         }
 
-        // الترتيب: الأحدث أولاً
-        $users = $query->latest()->get();
+        // فلترة بالدور
+        if ($request->filled('role') && $request->role !== 'all') {
+            $query->where('user_role', $request->role);
+        }
 
+        return response()->json(['success' => true, 'data' => $query->latest()->get()]);
+    }
+
+    // =========================================================
+    // 2️⃣ قسم إدارة الشقق (Apartments Management)
+    // =========================================================
+
+    // جلب الشقق المعلقة (للمراجعة)
+    public function pendingApartments()
+    {
+        $apartments = Apartment::with('owner')
+            ->where('status', 'pending')
+            ->latest()
+            ->get();
+
+        // نستخدم Resource لضمان ترجمة الأسماء حسب لغة الأدمن
         return response()->json([
             'success' => true,
-            'data' => $users
+            'apartments' => ApartmentResource::collection($apartments)
         ]);
     }
 
-    // جلب جميع الشقق (مع بيانات المالك والحجز الحالي)
+    // الموافقة على عقار (مع إشعار)
+    public function approveApartment($apartmentId)
+    {
+        try {
+            $apartment = Apartment::findOrFail($apartmentId);
+            $apartment->status = 'active';
+            $apartment->is_published = true;
+            $apartment->save();
+
+            // إرسال إشعار للمالك
+            Notification::create([
+                'user_id' => $apartment->owner_id,
+                'title'   => 'تمت الموافقة على عقارك! 🎉',
+                'body'    => "مبروك! تمت الموافقة على نشر عقارك '{$apartment->name_ar}' وهو الآن متاح للمستأجرين.",
+                'type'    => 'apartment_approved',
+                'is_read' => false
+            ]);
+
+            return response()->json(['success' => true, 'message' => "Apartment approved."]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+        }
+    }
+
+    // رفض عقار (مع إشعار)
+    public function rejectApartment($apartmentId)
+    {
+        try {
+            $apartment = Apartment::findOrFail($apartmentId);
+            $apartment->status = 'rejected';
+            $apartment->is_published = false;
+            $apartment->save();
+
+            // إرسال إشعار للمالك
+            Notification::create([
+                'user_id' => $apartment->owner_id,
+                'title'   => 'تم رفض عقارك ❌',
+                'body'    => "نأسف لإبلاغك بأنه تم رفض نشر عقارك '{$apartment->name_ar}'.",
+                'type'    => 'apartment_rejected',
+                'is_read' => false
+            ]);
+
+            return response()->json(['success' => true, 'message' => "Apartment rejected."]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+        }
+    }
+
+    // جلب جميع الشقق (شاملة البحث باللغتين)
     public function getAllApartments(Request $request)
     {
-        // جلب الشقة مع المالك + الحجز النشط (إن وجد) ومستخدم الحجز
         $query = Apartment::with(['owner', 'activeBooking.user']);
 
-        // بحث باسم الشقة أو المدينة
+        // 🔥 البحث في الحقول العربية والإنكليزية
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
-                $q->where('name', 'like', "%$search%")
-                    ->orWhere('city', 'like', "%$search%")
-                    ->orWhere('location', 'like', "%$search%");
+                $q->where('name_ar', 'like', "%$search%")
+                    ->orWhere('name_en', 'like', "%$search%")
+                    ->orWhere('city_ar', 'like', "%$search%")
+                    ->orWhere('city_en', 'like', "%$search%")
+                    ->orWhere('location_ar', 'like', "%$search%")
+                    ->orWhere('location_en', 'like', "%$search%");
             });
         }
 
-        // فلترة حسب الحالة (active, pending, rejected)
         if ($request->filled('status') && $request->status !== 'all') {
             $query->where('status', $request->status);
         }
 
         $apartments = $query->latest()->get();
 
-        // نستخدم Resource لتوحيد شكل البيانات
-        return \App\Http\Resources\ApartmentResource::collection($apartments);
+        return ApartmentResource::collection($apartments);
+    }
+
+    // حذف نهائي للشقة (Force Delete)
+    public function destroyApartment($id)
+    {
+        try {
+            $apartment = Apartment::findOrFail($id);
+            // هنا يمكنك إضافة كود لحذف الصور من التخزين إذا أردت
+            $apartment->delete();
+            return response()->json(['success' => true, 'message' => 'Apartment deleted successfully']);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Failed to delete'], 500);
+        }
+    }
+
+    // =========================================================
+    // 3️⃣ إدارة الحجوزات (Bookings Management) - 🔥 القسم الذي كان ناقصاً
+    // =========================================================
+
+    public function getAllBookings(Request $request)
+    {
+        try {
+            // تحميل العلاقات (المستأجر، العقار ومالكه)
+            $query = Booking::with(['user', 'apartment.owner']);
+
+            // البحث باسم المستأجر أو اسم العقار (عربي/انكليزي)
+            if ($request->filled('search')) {
+                $search = $request->search;
+                $query->whereHas('user', function($q) use ($search) {
+                    $q->where('first_name', 'like', "%$search%")
+                        ->orWhere('last_name', 'like', "%$search%");
+                })->orWhereHas('apartment', function($q) use ($search) {
+                    $q->where('name_ar', 'like', "%$search%")
+                        ->orWhere('name_en', 'like', "%$search%");
+                });
+            }
+
+            // الفلترة حسب الحالة
+            if ($request->filled('status') && $request->status !== 'all') {
+                $query->where('status', $request->status);
+            }
+
+            $bookings = $query->latest()->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $bookings
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching bookings: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // =========================================================
+    // 4️⃣ الإحصائيات العامة (Dashboard Stats)
+    // =========================================================
+
+    public function getDashboardStats()
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'new_users' => User::where('user_role', '!=', 'admin')->whereMonth('created_at', now()->month)->count(),
+                'pending_apartments' => Apartment::where('status', 'pending')->count(),
+                'total_bookings' => Booking::count(),
+                'total_revenue' => Booking::where('status', 'accepted')->sum('total_price')
+            ]
+        ]);
     }
 }
