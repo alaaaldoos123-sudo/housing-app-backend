@@ -4,13 +4,13 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\User;
-use App\Models\Notification;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class AuthController extends Controller
 {
+
     public function register(Request $request)
     {
         $data = $request->validate([
@@ -20,7 +20,7 @@ class AuthController extends Controller
             'last_name'     => 'required|string',
             'birth_date'    => 'required|date',
             'password'      => 'required|min:6',
-            'profile_image' => 'nullable|image|max:5120',
+            'profile_image' => 'nullable|image|max:5120', // 5MB Max
             'id_image'      => 'nullable|image|max:5120',
         ]);
 
@@ -39,10 +39,7 @@ class AuthController extends Controller
             }
         } catch (\Exception $e) {
             Log::error('File Upload Failed: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'فشل في رفع الصور، يرجى المحاولة لاحقاً.',
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'فشل رفع الصور'], 500);
         }
 
         $initialStatus = in_array($data['user_role'], ['tenant', 'owner']) ? 'pending' : 'active';
@@ -63,7 +60,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success'     => true,
-            'message'     => 'تم إنشاء الحساب بنجاح، بانتظار الموافقة.',
+            'message'     => 'تم إنشاء الحساب، بانتظار الموافقة.',
             'user_id'     => $user->id,
             'user_status' => $user->status,
             'token'       => $token,
@@ -80,116 +77,206 @@ class AuthController extends Controller
 
         $user = User::where('phone_number', $data['phone_number'])->first();
 
-        // 1. التحقق من صحة كلمة المرور
         if (! $user || ! Hash::check($data['password'], $user->password)) {
-            return response()->json(['message' => 'رقم الهاتف أو كلمة المرور غير صحيحة'], 401);
+            return response()->json(['message' => 'بيانات الدخول غير صحيحة'], 401);
         }
 
-        // 🔥 2. (الإضافة الجديدة) منع الدخول إذا كان المستخدم محظوراً
         if ($user->status === 'banned') {
+            return response()->json(['success' => false, 'message' => 'حسابك محظور'], 403);
+        }
+
+        if ($user->is_2fa_enabled) {
+            $otpCode = rand(1000, 9999);
+            $user->verification_code = $otpCode;
+            $user->save();
+
+            $message = "رمز التحقق الخاص بك: $otpCode";
+            $this->sendWhatsAppMessage($user->phone_number, $message);
+
             return response()->json([
-                'success' => false,
-                'message' => 'عذراً، هذا الحساب تم حظره من قبل الإدارة.',
-            ], 403); // كود 403 يعني ممنوع
+                'success'      => true,
+                'requires_2fa' => true,
+                'message'      => 'يرجى إدخال رمز التحقق المرسل للواتساب',
+                'phone_number' => $user->phone_number
+            ]);
         }
 
         $token = $user->createToken('auth')->plainTextToken;
 
         return response()->json([
             'success' => true,
-            'message' => 'تم تسجيل الدخول بنجاح',
             'token'   => $token,
             'user'    => $user,
             'user_status' => $user->status
         ]);
     }
 
-    public function updateProfile(Request $request)
+    public function verifyOtp(Request $request)
     {
-        $user = $request->user();
-
-        $data = $request->validate([
-            'first_name'    => 'required|string',
-            'last_name'     => 'required|string',
-            'phone_number'  => ['required', 'string', Rule::unique('users')->ignore($user->id)],
-            'profile_image' => 'nullable|image|max:5120',
+        $request->validate([
+            'phone_number' => 'required',
+            'code'         => 'required',
         ]);
 
-        try {
-            $user->first_name = $data['first_name'];
-            $user->last_name = $data['last_name'];
-            $user->phone_number = $data['phone_number'];
+        $user = User::where('phone_number', $request->phone_number)->first();
 
-            if ($request->hasFile('profile_image')) {
-                $path = $request->file('profile_image')->store('profiles', 'public');
-                $user->profile_image = asset('storage/' . $path);
-            }
+        if (!$user || $user->verification_code !== $request->code) {
+            return response()->json(['success' => false, 'message' => 'الرمز غير صحيح'], 400);
+        }
 
-            $user->save();
+        $user->verification_code = null;
+        $user->save();
 
-            try {
-                Notification::create([
-                    'user_id' => $user->id,
-                    'title'   => 'تحديث الملف الشخصي 👤',
-                    'body'    => 'تم تحديث بيانات حسابك الشخصي بنجاح.',
-                    'type'    => 'alert',
-                    'is_read' => false,
-                ]);
-            } catch (\Exception $e) {
-                Log::error("Notification Error: " . $e->getMessage());
-            }
+        $token = $user->createToken('auth')->plainTextToken;
 
+        return response()->json([
+            'success' => true,
+            'message' => 'تم التحقق بنجاح',
+            'token'   => $token,
+            'user'    => $user,
+            'user_status' => $user->status
+        ]);
+    }
+
+    public function toggleTwoFactor(Request $request)
+    {
+        $request->validate(['enable' => 'required|boolean']);
+        $user = $request->user();
+        $user->is_2fa_enabled = $request->enable;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => $user->is_2fa_enabled ? 'تم التفعيل' : 'تم الإيقاف',
+            'is_2fa_enabled' => $user->is_2fa_enabled
+        ]);
+    }
+
+    public function checkStatus(Request $request)
+    {
+        $user = $request->user();
+        if ($user) {
             return response()->json([
                 'success' => true,
-                'message' => 'تم تحديث الملف الشخصي بنجاح',
-                'user'    => $user,
+                'status' => $user->status,
+                'user_role' => $user->user_role,
+                'is_2fa_enabled' => $user->is_2fa_enabled,
             ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'حدث خطأ أثناء التحديث: ' . $e->getMessage(),
-            ], 500);
         }
+        return response()->json(['success' => false], 404);
     }
+
+
+
+    public function updateProfile(Request $request)
+    {
+        $request->validate([
+            'first_name'   => 'required|string',
+            'last_name'    => 'required|string',
+            'phone_number' => 'required|string|unique:users,phone_number,' . $request->user()->id,
+            'profile_image'=> 'nullable|image|max:5120',
+        ]);
+
+        $user = $request->user();
+
+        $user->first_name = $request->first_name;
+        $user->last_name = $request->last_name;
+        $user->phone_number = $request->phone_number;
+
+        if ($request->hasFile('profile_image')) {
+
+            $path = $request->file('profile_image')->store('profiles', 'public');
+            $user->profile_image = asset('storage/' . $path);
+        }
+
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تحديث الملف الشخصي بنجاح',
+            'user'    => $user,
+        ], 200);
+    }
+
 
     public function changePassword(Request $request)
     {
-        $user = $request->user();
-
         $request->validate([
             'current_password' => 'required',
             'new_password'     => 'required|min:6|confirmed',
         ]);
 
-        if (! Hash::check($request->current_password, $user->password)) {
+        $user = $request->user();
+
+        if (!Hash::check($request->current_password, $user->password)) {
             return response()->json([
                 'success' => false,
-                'message' => 'كلمة المرور الحالية غير صحيحة',
+                'message' => 'كلمة المرور الحالية غير صحيحة'
             ], 400);
         }
 
         $user->password = Hash::make($request->new_password);
         $user->save();
 
-        Notification::create([
-            'user_id' => $user->id,
-            'title'   => 'تغيير كلمة المرور 🔐',
-            'body'    => 'تم تغيير كلمة المرور الخاصة بحسابك بنجاح. إذا لم تكن أنت، يرجى التواصل معنا.',
-            'type'    => 'alert',
-            'is_read' => false,
-        ]);
-
         return response()->json([
             'success' => true,
-            'message' => 'تم تغيير كلمة المرور بنجاح',
+            'message' => 'تم تغيير كلمة المرور بنجاح'
         ]);
     }
 
-    // دالة تسجيل الخروج (أضفتها لك للاحتياط إذا لم تكن موجودة، وهي آمنة ولا تخرب شيء)
-    public function logout(Request $request)
-    {
+    public function logout(Request $request) {
         $request->user()->currentAccessToken()->delete();
-        return response()->json(['message' => 'Logged out successfully']);
+        return response()->json(['message' => 'Logged out']);
+    }
+
+    private function sendWhatsAppMessage(string $to, string $message): bool
+    {
+        $to = str_replace(' ', '', $to);
+        if (substr($to, 0, 2) == '09') {
+            $to = '963' . substr($to, 1);
+        }
+
+        $token = env('ULTRAMSG_TOKEN');
+        $instanceUrl = env('ULTRAMSG_API_URL');
+
+        if (env('ENABLE_WHATSAPP_NOTIFICATIONS') != true) {
+            Log::info("WhatsApp Sending Disabled. Message to $to: $message");
+            return true;
+        }
+
+        $params = [
+            'token' => $token,
+            'to' => $to,
+            'body' => $message,
+        ];
+
+        $curl = curl_init();
+        curl_setopt_array($curl, [
+            CURLOPT_URL => $instanceUrl . "/messages/chat",
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => "",
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_SSL_VERIFYPEER => 0,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => "POST",
+            CURLOPT_POSTFIELDS => http_build_query($params),
+            CURLOPT_HTTPHEADER => [
+                "content-type: application/x-www-form-urlencoded"
+            ],
+        ]);
+
+        $response = curl_exec($curl);
+        $err = curl_error($curl);
+        curl_close($curl);
+
+        if ($err) {
+            Log::error("UltraMsg Error: $err");
+            return false;
+        }
+
+        Log::info("UltraMsg Response: $response");
+        return true;
     }
 }

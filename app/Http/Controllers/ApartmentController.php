@@ -11,14 +11,12 @@ use Illuminate\Support\Facades\Auth;
 
 class ApartmentController extends Controller
 {
-    // عرض الشقق للعامة (فقط المقبولة والمنشورة)
     public function index(Request $request)
     {
         $query = Apartment::with('owner')
             ->where('status', 'active')
             ->where('is_published', true);
 
-        // بحث متعدد اللغات
         if ($request->filled('province')) {
             $province = $request->province;
             $query->where(function($q) use ($province) {
@@ -68,9 +66,7 @@ class ApartmentController extends Controller
         $apartment = Apartment::with('owner')->findOrFail($id);
         return new ApartmentResource($apartment);
     }
-
-    // إضافة شقة جديدة
-    public function store(Request $request)
+ public function store(Request $request)
     {
         $request->validate([
             'name_en'        => 'required|string|max:255',
@@ -145,7 +141,6 @@ class ApartmentController extends Controller
         }
     }
 
-    // تعديل العقار (محدّثة لتدعم الصور ✅)
     public function update(Request $request, $id)
     {
         $apartment = Apartment::findOrFail($id);
@@ -164,12 +159,9 @@ class ApartmentController extends Controller
             'images.*' => 'image|mimes:jpeg,png,jpg|max:5120',
         ]);
 
-        // 1. تحديث الحقول النصية
         $apartment->fill($request->except(['images']));
 
-        // 2. معالجة الصور (إذا تم رفع صور جديدة)
         if ($request->hasFile('images')) {
-            // حذف الصور القديمة من التخزين (اختياري - يفضل لتوفير المساحة)
             if ($apartment->image_url) {
                 Storage::disk('public')->delete($apartment->image_url);
             }
@@ -179,7 +171,6 @@ class ApartmentController extends Controller
                 }
             }
 
-            // رفع الصور الجديدة
             $galleryPaths = [];
             $mainImagePath = null;
 
@@ -191,12 +182,10 @@ class ApartmentController extends Controller
                 }
             }
 
-            // تحديث مسارات الصور في الداتابيز
             $apartment->image_url = $mainImagePath;
             $apartment->image_urls = $galleryPaths;
         }
 
-        // 3. إعادة الحالة للمراجعة
         $apartment->status = 'pending';
         $apartment->is_published = false;
 

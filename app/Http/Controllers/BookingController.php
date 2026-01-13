@@ -9,7 +9,7 @@ use App\Http\Resources\BookingResource;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
-use App\Models\Notification; // ✅ مستدعى وجاهز
+use App\Models\Notification;
 
 class BookingController extends Controller
 {
@@ -68,7 +68,6 @@ class BookingController extends Controller
             'notes'        => $request->notes
         ]);
 
-        // 🔥 إضافة 1: إشعار للمالك بوجود طلب جديد
         Notification::create([
             'user_id' => $apartment->owner_id, // صاحب الشقة
             'title'   => 'طلب حجز جديد 🏠',
@@ -84,6 +83,58 @@ class BookingController extends Controller
         ], 201);
     }
 
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'check_in'     => 'required|date|after_or_equal:today',
+            'check_out'    => 'required|date|after:check_in',
+        ]);
+
+        $booking = Booking::where('id', $id)->where('user_id', Auth::id())->firstOrFail();
+
+        if ($booking->status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن تعديل تفاصيل الحجز بعد قبوله أو رفضه.'
+            ], 400);
+        }
+
+        $isBooked = Booking::where('apartment_id', $booking->apartment_id)
+            ->where('id', '!=', $id) // 👈 مهم جداً: استثناء الحجز الحالي
+            ->whereIn('status', ['pending', 'confirmed', 'accepted'])
+            ->where(function ($query) use ($request) {
+                $query->where('check_in', '<', $request->check_out)
+                    ->where('check_out', '>', $request->check_in);
+            })->exists();
+
+        if ($isBooked) {
+            return response()->json([
+                'success' => false,
+                'message' => 'عذراً، الشقة محجوزة في الموعد الجديد الذي اخترته.'
+            ], 422);
+        }
+
+        $apartment = Apartment::findOrFail($booking->apartment_id);
+        $checkIn = Carbon::parse($request->check_in);
+        $checkOut = Carbon::parse($request->check_out);
+        $days = $checkIn->diffInDays($checkOut);
+        if ($days == 0) $days = 1;
+        $totalPrice = $days * $apartment->price;
+
+        $booking->update([
+            'check_in'    => $request->check_in,
+            'check_out'   => $request->check_out,
+            'total_price' => $totalPrice,
+            'notes'       => $request->notes ?? $booking->notes,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تعديل الحجز بنجاح',
+            'data'    => new BookingResource($booking)
+        ]);
+    }
+
     public function cancel($id)
     {
         $booking = Booking::where('id', $id)->where('user_id', Auth::id())->firstOrFail();
@@ -94,7 +145,6 @@ class BookingController extends Controller
 
         $booking->update(['status' => 'cancelled']);
 
-        // (اختياري) ممكن نضيف هون إشعار للمالك إنو المستأجر لغى الحجز
 
         return response()->json(['success' => true, 'message' => 'تم إلغاء الحجز بنجاح']);
     }
@@ -117,7 +167,6 @@ class BookingController extends Controller
             'status' => 'required|in:accepted,rejected'
         ]);
 
-        // جلب الحجز والتأكد أن المستخدم الحالي هو المالك
         $booking = Booking::whereHas('apartment', function ($query) {
             $query->where('owner_id', Auth::id());
         })->findOrFail($id);
@@ -126,7 +175,6 @@ class BookingController extends Controller
             'status' => $request->status
         ]);
 
-        // 🔥 إضافة 2: إشعار للمستأجر (قبول أو رفض)
         $isAccepted = $request->status == 'accepted';
 
         Notification::create([
@@ -150,7 +198,6 @@ class BookingController extends Controller
                 })
                 ->update(['status' => 'rejected']);
 
-            // ملاحظة: إذا حبيت مستقبلاً نبعت إشعارات للحجوزات اللي انرفضت تلقائياً (Conflict)، بنقدر نضيفها هون.
         }
 
         return response()->json([

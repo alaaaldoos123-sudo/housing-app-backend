@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers; // 1. تعديل الـ Namespace
+namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Favorite;

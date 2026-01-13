@@ -13,7 +13,6 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1️⃣ إنشاء حساباتكم الثابتة
         $admin = User::create([
             'first_name'   => 'ALAA',
             'last_name'    => 'Admin',
@@ -36,24 +35,20 @@ class DatabaseSeeder extends Seeder
             'status'        => 'active',
         ]);
 
-        // 2️⃣ إنشاء 10 مالكين جدد (Owners)
-        $owners = User::factory()->count(100)->state(['user_role' => 'owner'])->create();
+        $owners = User::factory()->count(10)->state(['user_role' => 'owner'])->create();
 
-        // 3️⃣ إنشاء الشقق
-        $apartments = Apartment::factory()->count(500)->make()->each(function ($apartment) use ($owners) {
+        $apartments = Apartment::factory()->count(15)->make()->each(function ($apartment) use ($owners) {
             $apartment->owner_id = $owners->random()->id;
             $apartment->save();
         });
 
 
-        $randomUsers = User::factory()->count(200)->state(['user_role' => 'tenant'])->create();
+        $randomUsers = User::factory()->count(20)->state(['user_role' => 'tenant'])->create();
 
-        // دمج سدرة مع المستخدمين العشوائيين
         $allTenants = $randomUsers->push($tenant);
 
-        // 5️⃣ إنشاء الحجوزات
         if ($apartments->count() > 0) {
-            for ($i = 0; $i < 300; $i++) {
+            for ($i = 0; $i < 30; $i++) {
                 Booking::factory()->create([
                     'user_id' => $allTenants->random()->id,
                     'apartment_id' => $apartments->random()->id,

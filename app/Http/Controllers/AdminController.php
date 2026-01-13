@@ -7,17 +7,12 @@ use App\Models\User;
 use App\Models\Apartment;
 use App\Models\Booking;
 use App\Models\Notification;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use App\Http\Resources\ApartmentResource; // تأكد من وجود هذا السطر
+use App\Http\Resources\ApartmentResource;
 
 class AdminController extends Controller
 {
-    // =========================================================
-    // 1️⃣ قسم إدارة المستخدمين (Users Management)
-    // =========================================================
 
-    // جلب المستخدمين قيد الانتظار
     public function pendingUsers(Request $request)
     {
         $pendingUsers = User::where('user_role', '!=', 'admin')
@@ -40,7 +35,6 @@ class AdminController extends Controller
         ]);
     }
 
-    // الموافقة على مستخدم
     public function approveUser($userId)
     {
         try {
@@ -54,7 +48,6 @@ class AdminController extends Controller
         }
     }
 
-    // رفض مستخدم
     public function rejectUser($userId)
     {
         try {
@@ -68,14 +61,13 @@ class AdminController extends Controller
         }
     }
 
-    // حظر مستخدم وطرد التوكنات
     public function banUser($userId)
     {
         try {
             $user = User::findOrFail($userId);
             $user->status = 'banned';
             $user->save();
-            $user->tokens()->delete(); // طرد المستخدم فوراً
+            $user->tokens()->delete();
 
             return response()->json(['success' => true, 'message' => "User banned and logged out."]);
         } catch (ModelNotFoundException $e) {
@@ -83,12 +75,10 @@ class AdminController extends Controller
         }
     }
 
-    // جلب جميع المستخدمين (للبحث والفلترة الشاملة)
     public function getAllUsers(Request $request)
     {
         $query = User::where('user_role', '!=', 'admin');
 
-        // البحث بالاسم أو الهاتف
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
@@ -98,24 +88,16 @@ class AdminController extends Controller
             });
         }
 
-        // فلترة بالحالة
         if ($request->filled('status') && $request->status !== 'all') {
             $query->where('status', $request->status);
         }
 
-        // فلترة بالدور
         if ($request->filled('role') && $request->role !== 'all') {
             $query->where('user_role', $request->role);
         }
 
         return response()->json(['success' => true, 'data' => $query->latest()->get()]);
     }
-
-    // =========================================================
-    // 2️⃣ قسم إدارة الشقق (Apartments Management)
-    // =========================================================
-
-    // جلب الشقق المعلقة (للمراجعة)
     public function pendingApartments()
     {
         $apartments = Apartment::with('owner')
@@ -123,14 +105,12 @@ class AdminController extends Controller
             ->latest()
             ->get();
 
-        // نستخدم Resource لضمان ترجمة الأسماء حسب لغة الأدمن
         return response()->json([
             'success' => true,
             'apartments' => ApartmentResource::collection($apartments)
         ]);
     }
 
-    // الموافقة على عقار (مع إشعار)
     public function approveApartment($apartmentId)
     {
         try {
@@ -139,7 +119,6 @@ class AdminController extends Controller
             $apartment->is_published = true;
             $apartment->save();
 
-            // إرسال إشعار للمالك
             Notification::create([
                 'user_id' => $apartment->owner_id,
                 'title'   => 'تمت الموافقة على عقارك! 🎉',
@@ -154,7 +133,6 @@ class AdminController extends Controller
         }
     }
 
-    // رفض عقار (مع إشعار)
     public function rejectApartment($apartmentId)
     {
         try {
@@ -163,7 +141,6 @@ class AdminController extends Controller
             $apartment->is_published = false;
             $apartment->save();
 
-            // إرسال إشعار للمالك
             Notification::create([
                 'user_id' => $apartment->owner_id,
                 'title'   => 'تم رفض عقارك ❌',
@@ -178,12 +155,10 @@ class AdminController extends Controller
         }
     }
 
-    // جلب جميع الشقق (شاملة البحث باللغتين)
     public function getAllApartments(Request $request)
     {
         $query = Apartment::with(['owner', 'activeBooking.user']);
 
-        // 🔥 البحث في الحقول العربية والإنكليزية
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
@@ -205,12 +180,10 @@ class AdminController extends Controller
         return ApartmentResource::collection($apartments);
     }
 
-    // حذف نهائي للشقة (Force Delete)
     public function destroyApartment($id)
     {
         try {
             $apartment = Apartment::findOrFail($id);
-            // هنا يمكنك إضافة كود لحذف الصور من التخزين إذا أردت
             $apartment->delete();
             return response()->json(['success' => true, 'message' => 'Apartment deleted successfully']);
         } catch (\Exception $e) {
@@ -218,17 +191,11 @@ class AdminController extends Controller
         }
     }
 
-    // =========================================================
-    // 3️⃣ إدارة الحجوزات (Bookings Management) - 🔥 القسم الذي كان ناقصاً
-    // =========================================================
-
     public function getAllBookings(Request $request)
     {
         try {
-            // تحميل العلاقات (المستأجر، العقار ومالكه)
             $query = Booking::with(['user', 'apartment.owner']);
 
-            // البحث باسم المستأجر أو اسم العقار (عربي/انكليزي)
             if ($request->filled('search')) {
                 $search = $request->search;
                 $query->whereHas('user', function($q) use ($search) {
@@ -240,7 +207,6 @@ class AdminController extends Controller
                 });
             }
 
-            // الفلترة حسب الحالة
             if ($request->filled('status') && $request->status !== 'all') {
                 $query->where('status', $request->status);
             }
@@ -259,12 +225,7 @@ class AdminController extends Controller
             ], 500);
         }
     }
-
-    // =========================================================
-    // 4️⃣ الإحصائيات العامة (Dashboard Stats)
-    // =========================================================
-
-    public function getDashboardStats()
+   public function getDashboardStats()
     {
         return response()->json([
             'success' => true,

@@ -3,22 +3,24 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Models\Apartment;
 
 class ApartmentResource extends JsonResource
 {
     public function toArray($request)
     {
+        $lang = $request->header('Accept-Language', 'ar');
+        $isEnglish = ($lang === 'en');
+
         return [
             'id' => $this->id,
 
-            // 👇 1. الحقول الديناميكية (للعرض حسب لغة الموبايل)
-            'name' => $this->name,
-            'description' => $this->description,
-            'location' => $this->location,
-            'city' => $this->city,
-            'province' => $this->province,
+            'name'        => $isEnglish ? ($this->name_en ?? $this->name_ar) : $this->name_ar,
+            'description' => $isEnglish ? ($this->description_en ?? $this->description_ar) : $this->description_ar,
+            'location'    => $isEnglish ? ($this->location_en ?? $this->location_ar) : $this->location_ar,
+            'city'        => $isEnglish ? ($this->city_en ?? $this->city_ar) : $this->city_ar,
+            'province'    => $isEnglish ? ($this->province_en ?? $this->province_ar) : $this->province_ar,
 
-            // 👇 2. الحقول الخام (ضرورية عشان شاشة التعديل تقدر تعبي الخانات)
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,
 
@@ -34,7 +36,6 @@ class ApartmentResource extends JsonResource
             'province_ar' => $this->province_ar,
             'province_en' => $this->province_en,
 
-            // الحقول المشتركة
             'price' => $this->price,
             'price_unit' => $this->price_unit,
 
@@ -49,16 +50,16 @@ class ApartmentResource extends JsonResource
             }),
 
             'amenities' => $this->amenities,
+
             'rating' => (double) $this->rating,
             'review_count' => (int) $this->review_count,
 
             'status' => $this->status,
             'is_published' => (bool) $this->is_published,
-            'is_favorite' => $this->is_favorite, // مفيد جداً للفرونت
+            'is_favorite' => $this->is_favorite,
 
             'owner' => $this->owner,
 
-            // بيانات الحجز النشط (للمالك)
             'current_booking' => $this->activeBooking ? [
                 'id' => $this->activeBooking->id,
                 'check_in' => $this->activeBooking->check_in,

@@ -18,10 +18,9 @@ return new class extends Migration
 
             $table->enum('user_role', ['tenant', 'owner', 'admin'])->default('tenant');
 
-// داخل دالة up()
             $table->enum('status', ['active', 'pending', 'rejected', 'banned'])->default('pending');
-            $table->string('profile_image')->nullable(); // بدل avatar
-            $table->string('id_image')->nullable();      // بدل identity_image
+            $table->string('profile_image')->nullable();
+            $table->string('id_image')->nullable();
 
             $table->date('birth_date')->nullable();
 

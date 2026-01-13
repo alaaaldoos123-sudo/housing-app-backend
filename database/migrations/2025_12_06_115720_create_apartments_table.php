@@ -13,14 +13,13 @@ return new class extends Migration
 
             $table->foreignId('owner_id')->constrained('users')->onDelete('cascade');
 
-            // 👇 التعديل هنا: قسمنا الاسم والوصف والموقع للغتين
             $table->string('name_en');
             $table->string('name_ar');
 
             $table->text('description_en')->nullable();
             $table->text('description_ar')->nullable();
 
-            $table->string('location_en')->nullable(); // العنوان التفصيلي
+            $table->string('location_en')->nullable();
             $table->string('location_ar')->nullable();
 
             $table->string('city_en');
@@ -29,7 +28,6 @@ return new class extends Migration
             $table->string('province_en');
             $table->string('province_ar');
 
-            // بقية الحقول كما هي (الأرقام لا تحتاج ترجمة)
             $table->decimal('price', 12, 2);
             $table->string('price_unit')->default('night');
             $table->string('image_url')->nullable();
@@ -37,7 +35,7 @@ return new class extends Migration
             $table->integer('bedrooms')->default(1);
             $table->integer('bathrooms')->default(1);
             $table->string('area');
-            $table->json('amenities')->nullable(); // يفضل تخزين الميزات كـ IDs وتترجم في الفرونت، أو تخزينها كـ JSON مزدوج اللغة
+            $table->json('amenities')->nullable();
             $table->double('rating')->default(0);
             $table->integer('review_count')->default(0);
             $table->boolean('is_published')->default(true);

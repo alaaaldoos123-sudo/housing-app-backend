@@ -34,10 +34,6 @@ class ChatController extends Controller
             'data' => $message
         ], 200);
     }
-
-    // ==========================================================
-    // 2. جلب رسائل المحادثة (تم التعديل لتصفير العداد ✅)
-    // ==========================================================
     public function getMessages(Request $request)
     {
         $request->validate([
@@ -47,17 +43,11 @@ class ChatController extends Controller
 
         $userId = $request->user_id;
         $otherId = $request->other_id;
-
-        // 🔥🔥🔥 التعديل الجديد هنا 🔥🔥🔥
-        // قبل جلب الرسائل، نقوم بتحديث حالتها إلى "مقروءة"
-        // الشرط: الرسائل التي أرسلها الطرف الآخر (otherId) واستلمتها أنا (userId) وهي غير مقروءة
-        Message::where('sender_id', $otherId)
+    Message::where('sender_id', $otherId)
             ->where('receiver_id', $userId)
             ->where('is_read', false)
             ->update(['is_read' => true]);
-        // 🔥🔥🔥 انتهى التعديل 🔥🔥🔥
 
-        // الآن نجلب الرسائل كالمعتاد
         $messages = Message::where(function($q) use ($userId, $otherId) {
             $q->where('sender_id', $userId)->where('receiver_id', $otherId);
         })
@@ -82,10 +72,7 @@ class ChatController extends Controller
         return response()->json($formattedMessages, 200);
     }
 
-    // ==========================================================
-    // 3. جلب قائمة المحادثات
-    // ==========================================================
-    public function getMyChats(Request $request)
+   public function getMyChats(Request $request)
     {
         $request->validate([
             'user_id' => 'required',
@@ -120,7 +107,6 @@ class ChatController extends Controller
 
             $fullName = $otherUser->first_name . ' ' . $otherUser->last_name;
 
-            // حساب عدد الرسائل غير المقروءة
             $unreadCount = Message::where('sender_id', $otherUser->id)
                 ->where('receiver_id', $userId)
                 ->where('is_read', false)

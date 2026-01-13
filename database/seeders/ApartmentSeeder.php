@@ -10,7 +10,6 @@ class ApartmentSeeder extends Seeder
 {
     public function run(): void
     {
-        // جلب الملاك
         $owners = User::where('user_role', 'owner')->get();
 
         if ($owners->isEmpty()) {
@@ -20,7 +19,6 @@ class ApartmentSeeder extends Seeder
 
         $apartments = [
             [
-                // دمشق - أبو رمانة
                 'name_ar' => 'شقة ديلوكس إطلالة قاسيون',
                 'name_en' => 'Deluxe Apartment Qasioun View',
 
@@ -47,10 +45,9 @@ class ApartmentSeeder extends Seeder
                 'rating' => 4.8,
                 'review_count' => 15,
                 'is_published' => true,
-                'status' => 'active', // ✅ مهم جداً للكود الجديد
+                'status' => 'active',
             ],
             [
-                // دمشق - المزة
                 'name_ar' => 'استديو طلابي مرتب',
                 'name_en' => 'Tidy Student Studio',
 
@@ -80,7 +77,6 @@ class ApartmentSeeder extends Seeder
                 'status' => 'active',
             ],
             [
-                // ريف دمشق - يعفور
                 'name_ar' => 'فيلا مع مسبح خاص',
                 'name_en' => 'Luxury Villa with Private Pool',
 
@@ -110,7 +106,6 @@ class ApartmentSeeder extends Seeder
                 'status' => 'active',
             ],
             [
-                // اللاذقية
                 'name_ar' => 'شاليه الشاطئ الأزرق',
                 'name_en' => 'Blue Beach Chalet',
 
@@ -140,7 +135,6 @@ class ApartmentSeeder extends Seeder
                 'status' => 'active',
             ],
             [
-                // حلب
                 'name_ar' => 'بيت عربي تراثي',
                 'name_en' => 'Traditional Arabic House',
 
@@ -170,7 +164,6 @@ class ApartmentSeeder extends Seeder
                 'status' => 'active',
             ],
             [
-                // حمص
                 'name_ar' => 'شقة عائلية وسط المدينة',
                 'name_en' => 'Family Apartment City Center',
 
@@ -202,7 +195,6 @@ class ApartmentSeeder extends Seeder
         ];
 
         foreach ($apartments as $index => $apartmentData) {
-            // توزيع الشقق على الملاك بالتناوب
             $owner = $owners[$index % $owners->count()];
 
             Apartment::create(array_merge($apartmentData, [

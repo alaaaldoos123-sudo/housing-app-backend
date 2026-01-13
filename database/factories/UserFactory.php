@@ -13,15 +13,11 @@ class UserFactory extends Factory
             'first_name' => fake()->firstName(),
             'last_name' => fake()->lastName(),
 
-            // ❌ تم حذف الإيميل من هنا لأنه غير موجود في الداتابيز
-            // 'email' => fake()->unique()->safeEmail(),
-            // 'email_verified_at' => now(),
 
-            'phone_number' => fake()->phoneNumber(),
+            'phone_number' => fake()->unique()->numerify('09########'),
 
             'password' => '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', // password
 
-            // ✅ تأكدنا من استخدام tenant بدلاً من user لتجنب الخطأ السابق
             'user_role' => fake()->randomElement(['tenant', 'tenant', 'tenant', 'owner']),
 
             'status' => 'active',
@@ -35,7 +31,7 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'user_role' => 'admin',
-            // 'email' => 'admin@admin.com', // ❌ احذف هذا أيضاً إذا كان الأدمن لا يملك إيميل
+            'phone_number' => '0999999999',
             'first_name' => 'Super',
             'last_name' => 'Admin',
         ]);
