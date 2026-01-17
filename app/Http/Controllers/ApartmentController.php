@@ -8,6 +8,7 @@ use App\Http\Resources\ApartmentResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
+use Stichoza\GoogleTranslate\GoogleTranslate;
 
 class ApartmentController extends Controller
 {
@@ -40,10 +41,19 @@ class ApartmentController extends Controller
             $query->where('price', '<=', $request->max_price);
         }
 
-        if ($request->filled('amenities') && is_array($request->amenities)) {
-            foreach ($request->amenities as $amenity) {
-                $query->whereJsonContains('amenities', $amenity);
+        if ($request->filled('amenities')) {
+            $amenities = $request->amenities;
+
+            if (!is_array($amenities)) {
+                $amenities = (array)$amenities;
             }
+
+            $query->where(function ($q) use ($amenities) {
+                foreach ($amenities as $amenity) {
+
+                    $q->where('amenities', 'like', '%' . $amenity . '%');
+                }
+            });
         }
 
         $apartments = $query->latest()->get();
@@ -66,17 +76,15 @@ class ApartmentController extends Controller
         $apartment = Apartment::with('owner')->findOrFail($id);
         return new ApartmentResource($apartment);
     }
- public function store(Request $request)
+
+    public function store(Request $request)
     {
         $request->validate([
-            'name_en'        => 'required|string|max:255',
-            'name_ar'        => 'required|string|max:255',
-            'description_en' => 'nullable|string',
-            'description_ar' => 'nullable|string',
-            'location_en'    => 'nullable|string',
-            'location_ar'    => 'nullable|string',
-            'city_en'        => 'required|string',
-            'city_ar'        => 'required|string',
+            'name'           => 'required|string|max:255',
+            'description'    => 'required|string',
+            'location'       => 'required|string',
+            'city'           => 'required|string',
+            'lang'           => 'nullable|string|in:ar,en',
             'province_en'    => 'required|string',
             'province_ar'    => 'required|string',
             'price'          => 'required|numeric',
@@ -90,6 +98,46 @@ class ApartmentController extends Controller
         ]);
 
         try {
+            $tr = new GoogleTranslate();
+            $inputLang = $request->input('lang', 'ar');
+
+            $nameAr = ""; $nameEn = "";
+            $descAr = ""; $descEn = "";
+            $locAr = ""; $locEn = "";
+            $cityAr = ""; $cityEn = "";
+
+            if ($inputLang == 'ar') {
+                $tr->setSource('ar');
+                $tr->setTarget('en');
+
+                $nameAr = $request->name;
+                $nameEn = $tr->translate($request->name);
+
+                $descAr = $request->description;
+                $descEn = $tr->translate($request->description);
+
+                $locAr = $request->location;
+                $locEn = $tr->translate($request->location);
+
+                $cityAr = $request->city;
+                $cityEn = $tr->translate($request->city);
+            } else {
+                $tr->setSource('en');
+                $tr->setTarget('ar');
+
+                $nameEn = $request->name;
+                $nameAr = $tr->translate($request->name);
+
+                $descEn = $request->description;
+                $descAr = $tr->translate($request->description);
+
+                $locEn = $request->location;
+                $locAr = $tr->translate($request->location);
+
+                $cityEn = $request->city;
+                $cityAr = $tr->translate($request->city);
+            }
+
             $galleryPaths = [];
             $mainImagePath = null;
 
@@ -105,14 +153,14 @@ class ApartmentController extends Controller
 
             $apartment = Apartment::create([
                 'owner_id'      => Auth::id(),
-                'name_en'       => $request->name_en,
-                'name_ar'       => $request->name_ar,
-                'description_en'=> $request->description_en,
-                'description_ar'=> $request->description_ar,
-                'location_en'   => $request->location_en,
-                'location_ar'   => $request->location_ar,
-                'city_en'       => $request->city_en,
-                'city_ar'       => $request->city_ar,
+                'name_en'       => $nameEn,
+                'name_ar'       => $nameAr,
+                'description_en'=> $descEn,
+                'description_ar'=> $descAr,
+                'location_en'   => $locEn,
+                'location_ar'   => $locAr,
+                'city_en'       => $cityEn,
+                'city_ar'       => $cityAr,
                 'province_en'   => $request->province_en,
                 'province_ar'   => $request->province_ar,
                 'price'         => $request->price,
@@ -150,16 +198,46 @@ class ApartmentController extends Controller
         }
 
         $request->validate([
-            'name_en' => 'nullable|string',
-            'name_ar' => 'nullable|string',
+            'name' => 'nullable|string',
+            'description' => 'nullable|string',
+            'location' => 'nullable|string',
+            'city' => 'nullable|string',
+            'lang' => 'nullable|string|in:ar,en',
             'price' => 'nullable|numeric',
-            'description_en' => 'nullable|string',
-            'description_ar' => 'nullable|string',
-            'images' => 'nullable|array', // الصور اختيارية عند التعديل
+            'images' => 'nullable|array',
             'images.*' => 'image|mimes:jpeg,png,jpg|max:5120',
         ]);
 
-        $apartment->fill($request->except(['images']));
+        $tr = new GoogleTranslate();
+        $inputLang = $request->input('lang', 'ar');
+
+        if ($inputLang == 'ar') {
+            $tr->setSource('ar'); $tr->setTarget('en');
+        } else {
+            $tr->setSource('en'); $tr->setTarget('ar');
+        }
+
+        if ($request->filled('name')) {
+            $apartment->name_ar = $inputLang == 'ar' ? $request->name : $tr->translate($request->name);
+            $apartment->name_en = $inputLang == 'en' ? $request->name : $tr->translate($request->name);
+        }
+
+        if ($request->filled('description')) {
+            $apartment->description_ar = $inputLang == 'ar' ? $request->description : $tr->translate($request->description);
+            $apartment->description_en = $inputLang == 'en' ? $request->description : $tr->translate($request->description);
+        }
+
+        if ($request->filled('location')) {
+            $apartment->location_ar = $inputLang == 'ar' ? $request->location : $tr->translate($request->location);
+            $apartment->location_en = $inputLang == 'en' ? $request->location : $tr->translate($request->location);
+        }
+
+        if ($request->filled('city')) {
+            $apartment->city_ar = $inputLang == 'ar' ? $request->city : $tr->translate($request->city);
+            $apartment->city_en = $inputLang == 'en' ? $request->city : $tr->translate($request->city);
+        }
+
+        $apartment->fill($request->except(['images', 'name', 'description', 'location', 'city', 'lang']));
 
         if ($request->hasFile('images')) {
             if ($apartment->image_url) {

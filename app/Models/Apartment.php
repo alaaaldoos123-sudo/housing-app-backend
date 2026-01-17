@@ -33,17 +33,17 @@ class Apartment extends Model
 
     protected $appends = ['is_favorite', 'name', 'description', 'location', 'city', 'province'];
 
-   public static $amenitiesList = [
-        'wifi'      => ['ar' => 'واي فاي',       'en' => 'Free Wi-Fi'],
-        'ac'        => ['ar' => 'تكييف',         'en' => 'Air Conditioning'],
-        'heating'   => ['ar' => 'تدفئة',         'en' => 'Heating'],
-        'elevator'  => ['ar' => 'مصعد',          'en' => 'Elevator'],
-        'parking'   => ['ar' => 'موقف سيارات',   'en' => 'Parking'],
-        'generator' => ['ar' => 'مولدة كهرباء',  'en' => 'Power Generator'],
-        'pool'      => ['ar' => 'مسبح',          'en' => 'Swimming Pool'],
-        'balcony'   => ['ar' => 'شرفة',          'en' => 'Balcony'],
-        'security'  => ['ar' => 'حراسة أمنية',   'en' => 'Security'],
-        'gym'       => ['ar' => 'نادي رياضي',    'en' => 'Gym'],
+    public static $amenitiesList = [
+        'wifi'          => ['ar' => 'واي فاي',      'en' => 'WiFi'],
+        'ac'            => ['ar' => 'تكييف',        'en' => 'Air Conditioning'],
+        'elevator'      => ['ar' => 'مصعد',         'en' => 'Elevator'],
+        'parking'       => ['ar' => 'باركينغ',      'en' => 'Parking'],
+        'pool'          => ['ar' => 'مسبح',         'en' => 'Swimming Pool'],
+        'solar_energy'  => ['ar' => 'طاقة شمسية',   'en' => 'Solar Energy'],
+        'furnished'     => ['ar' => 'فرش كامل',     'en' => 'Fully Furnished'],
+        'balcony'       => ['ar' => 'بلكونة',       'en' => 'Balcony'],
+        'heating'       => ['ar' => 'تدفئة',        'en' => 'Heating'],
+        'security'      => ['ar' => 'حراسة',        'en' => 'Security'],
     ];
     public function getNameAttribute()
     {

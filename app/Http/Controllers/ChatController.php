@@ -43,7 +43,7 @@ class ChatController extends Controller
 
         $userId = $request->user_id;
         $otherId = $request->other_id;
-    Message::where('sender_id', $otherId)
+        Message::where('sender_id', $otherId)
             ->where('receiver_id', $userId)
             ->where('is_read', false)
             ->update(['is_read' => true]);
@@ -72,7 +72,7 @@ class ChatController extends Controller
         return response()->json($formattedMessages, 200);
     }
 
-   public function getMyChats(Request $request)
+    public function getMyChats(Request $request)
     {
         $request->validate([
             'user_id' => 'required',
@@ -101,9 +101,14 @@ class ChatController extends Controller
 
             $processedUserIds[] = $otherUser->id;
 
-            $imageUrl = $otherUser->profile_image
-                ? asset('storage/' . $otherUser->profile_image)
-                : '';
+            $imageUrl = '';
+            if ($otherUser->profile_image) {
+                if (strpos($otherUser->profile_image, 'http') === 0) {
+                    $imageUrl = $otherUser->profile_image;
+                } else {
+                    $imageUrl = asset('storage/' . $otherUser->profile_image);
+                }
+            }
 
             $fullName = $otherUser->first_name . ' ' . $otherUser->last_name;
 

@@ -58,6 +58,18 @@ class BookingController extends Controller
 
         $totalPrice = $days * $apartment->price;
 
+        $user = Auth::user();
+
+        if ($user->wallet_balance < $totalPrice) {
+            return response()->json([
+                'success' => false,
+                'message' => 'عذراً، رصيد المحفظة غير كافي لإتمام الحجز.'
+            ], 422);
+        }
+
+        $user->wallet_balance -= $totalPrice;
+        $user->save();
+
         $booking = Booking::create([
             'user_id'      => Auth::id(),
             'apartment_id' => $request->apartment_id,
@@ -69,7 +81,7 @@ class BookingController extends Controller
         ]);
 
         Notification::create([
-            'user_id' => $apartment->owner_id, // صاحب الشقة
+            'user_id' => $apartment->owner_id,
             'title'   => 'طلب حجز جديد 🏠',
             'body'    => 'لديك طلب حجز جديد من ' . Auth::user()->first_name . '، يرجى المراجعة.',
             'type'    => 'booking',
@@ -78,7 +90,7 @@ class BookingController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'تم إرسال طلب الحجز، بانتظار موافقة المالك',
+            'message' => 'تم خصم المبلغ وإرسال طلب الحجز، بانتظار موافقة المالك',
             'data'    => new BookingResource($booking->load('apartment'))
         ], 201);
     }
@@ -100,7 +112,7 @@ class BookingController extends Controller
         }
 
         $isBooked = Booking::where('apartment_id', $booking->apartment_id)
-            ->where('id', '!=', $id) // 👈 مهم جداً: استثناء الحجز الحالي
+            ->where('id', '!=', $id)
             ->whereIn('status', ['pending', 'confirmed', 'accepted'])
             ->where(function ($query) use ($request) {
                 $query->where('check_in', '<', $request->check_out)
@@ -119,18 +131,35 @@ class BookingController extends Controller
         $checkOut = Carbon::parse($request->check_out);
         $days = $checkIn->diffInDays($checkOut);
         if ($days == 0) $days = 1;
-        $totalPrice = $days * $apartment->price;
+
+        $newTotalPrice = $days * $apartment->price;
+        $priceDifference = $newTotalPrice - $booking->total_price;
+        $user = Auth::user();
+
+        if ($priceDifference > 0) {
+            if ($user->wallet_balance < $priceDifference) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'رصيد المحفظة غير كافي لدفع فرق السعر للتعديل.'
+                ], 422);
+            }
+            $user->wallet_balance -= $priceDifference;
+        } elseif ($priceDifference < 0) {
+            $user->wallet_balance += abs($priceDifference);
+        }
+
+        $user->save();
 
         $booking->update([
             'check_in'    => $request->check_in,
             'check_out'   => $request->check_out,
-            'total_price' => $totalPrice,
+            'total_price' => $newTotalPrice,
             'notes'       => $request->notes ?? $booking->notes,
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم تعديل الحجز بنجاح',
+            'message' => 'تم تعديل الحجز وتحديث الرصيد بنجاح',
             'data'    => new BookingResource($booking)
         ]);
     }
@@ -143,10 +172,13 @@ class BookingController extends Controller
             return response()->json(['message' => 'لا يمكن إلغاء هذا الحجز.'], 400);
         }
 
+        $user = Auth::user();
+        $user->wallet_balance += $booking->total_price;
+        $user->save();
+
         $booking->update(['status' => 'cancelled']);
 
-
-        return response()->json(['success' => true, 'message' => 'تم إلغاء الحجز بنجاح']);
+        return response()->json(['success' => true, 'message' => 'تم إلغاء الحجز واستعادة المبلغ للمحفظة بنجاح']);
     }
 
     public function ownerRequests()
@@ -171,6 +203,17 @@ class BookingController extends Controller
             $query->where('owner_id', Auth::id());
         })->findOrFail($id);
 
+        if ($request->status == 'rejected') {
+            $tenant = $booking->user;
+            $tenant->wallet_balance += $booking->total_price;
+            $tenant->save();
+        }
+        elseif ($request->status == 'accepted') {
+            $owner = Auth::user();
+            $owner->wallet_balance += $booking->total_price;
+            $owner->save();
+        }
+
         $booking->update([
             'status' => $request->status
         ]);
@@ -178,31 +221,45 @@ class BookingController extends Controller
         $isAccepted = $request->status == 'accepted';
 
         Notification::create([
-            'user_id' => $booking->user_id, // المستأجر
+            'user_id' => $booking->user_id,
             'title'   => $isAccepted ? 'تمت الموافقة على حجزك! ✅' : 'تم رفض الحجز ❌',
             'body'    => $isAccepted
-                ? 'وافق المالك على طلبك! يرجى إتمام الدفع لتثبيت الحجز.'
-                : 'نعتذر منك، الشقة غير متاحة حالياً.',
+                ? 'وافق المالك على طلبك! نتمنى لك إقامة سعيدة.'
+                : 'نعتذر منك، الشقة غير متاحة حالياً. تم استعادة المبلغ لمحفظتك.',
             'type'    => $isAccepted ? 'booking' : 'alert',
             'is_read' => false,
         ]);
 
-
         if ($request->status == 'accepted') {
-            Booking::where('apartment_id', $booking->apartment_id)
+            $conflictingBookings = Booking::where('apartment_id', $booking->apartment_id)
                 ->where('id', '!=', $booking->id)
                 ->where('status', 'pending')
                 ->where(function ($q) use ($booking) {
                     $q->where('check_in', '<', $booking->check_out)
                         ->where('check_out', '>', $booking->check_in);
                 })
-                ->update(['status' => 'rejected']);
+                ->get();
 
+            foreach ($conflictingBookings as $conflict) {
+                $conflictTenant = $conflict->user;
+                $conflictTenant->wallet_balance += $conflict->total_price;
+                $conflictTenant->save();
+
+                $conflict->update(['status' => 'rejected']);
+
+                Notification::create([
+                    'user_id' => $conflict->user_id,
+                    'title'   => 'تم رفض الحجز ❌',
+                    'body'    => 'نعتذر منك، تم حجز الشقة لمستأجر آخر في نفس التواريخ. تم استعادة المبلغ لمحفظتك.',
+                    'type'    => 'alert',
+                    'is_read' => false,
+                ]);
+            }
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'تم تحديث حالة الحجز بنجاح إلى ' . ($request->status == 'accepted' ? 'مقبول' : 'مرفوض'),
+            'message' => 'تم تحديث حالة الحجز وتوزيع الأرصدة بنجاح',
             'data'    => new BookingResource($booking)
         ]);
     }

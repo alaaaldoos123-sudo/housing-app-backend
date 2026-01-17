@@ -11,7 +11,7 @@ use App\Http\Middleware\RoleMiddleware;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ChatController;
-
+use App\Http\Controllers\SupportController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -54,9 +54,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/send_message', [ChatController::class, 'sendMessage']);
     Route::get('/get_messages', [ChatController::class, 'getMessages']);
     Route::get('/get_my_chats', [ChatController::class, 'getMyChats']);
+
+    Route::post('/support/send', [SupportController::class, 'store']);
 });
-
-
 
 Route::middleware(['auth:sanctum', RoleMiddleware::class . ':admin'])->prefix('admin')->group(function () {
 
@@ -77,4 +77,6 @@ Route::middleware(['auth:sanctum', RoleMiddleware::class . ':admin'])->prefix('a
     Route::delete('/apartments/{id}', [AdminController::class, 'forceDeleteApartment']);
 
     Route::get('/all-bookings', [AdminController::class, 'getAllBookings']);
+
+    Route::get('/support/messages', [SupportController::class, 'index']);
 });
